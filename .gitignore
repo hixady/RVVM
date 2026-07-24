@@ -22,6 +22,9 @@
 !/include
 !/src
 
+# Explicitly track documentation
+!/docs
+
 # Explicitly track build system
 !/Makefile
 !/project.mk

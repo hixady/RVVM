@@ -437,6 +437,31 @@ static inline rvvm_pci_func_t* rvvm_gpu_xe2_init_auto(rvvm_machine_t* machine, r
 }
 
 /**
+ * Attach VirtIO GPU device to the machine (PCI-based)
+ *
+ * Provides an accelerated display via the modern VirtIO GPU interface.
+ * 2D scanout is always available; 3D acceleration (VirGL / Venus) is enabled
+ * when librvvm is built with a renderer backend (USE_VIRGL).
+ *
+ * Framebuffer device unconditionally transfers ownership
+ *
+ * \param machine Machine handle (Nullable, invokes cleanup)
+ * \param fbdev   Framebuffer device handle (Nullable)
+ * \param addr    PCI bus address
+ * \return        PCI function handle (NULL on failure)
+ *
+ * This device is hot-removable via rvvm_pci_func_remove()
+ */
+RVVM_PUBLIC rvvm_pci_func_t* rvvm_virtio_gpu_init(rvvm_machine_t* machine, /**/
+                                                  rvvm_fbdev_t*   fbdev,   /**/
+                                                  rvvm_pci_addr_t addr);
+
+static inline rvvm_pci_func_t* rvvm_virtio_gpu_init_auto(rvvm_machine_t* machine, rvvm_fbdev_t* fbdev)
+{
+    return rvvm_virtio_gpu_init(machine, fbdev, -1);
+}
+
+/**
  * @}
  * @defgroup rvvm_board_setup Built-in boards
  * @addtogroup rvvm_board_setup

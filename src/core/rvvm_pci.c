@@ -108,6 +108,16 @@ PUSH_OPTIMIZATION_SIZE
 #define PCI_CAP_OFFSET          0x00000040UL // Capabilities List Offset
 
 /*
+ * Device-provided capability list offset
+ *
+ * Sits right after the built-in MSI-X capability (0xB0..0xBB), giving devices
+ * the 0xBC..0xFF window (68 bytes) of standard config space to publish their
+ * own capabilities (e.g. Virtio vendor-specific capabilities)
+ */
+#define PCI_DEV_CAP_OFFSET      0x000000BCUL // Device capability list offset
+#define PCI_DEV_CAP_END         0x00000100UL // End of standard config space
+
+/*
  * PCI Express capability port types
  */
 #define PCI_ECAP_ENDPOINT       0x00000000UL // PCI Express Endpoint
@@ -234,6 +244,11 @@ struct rvvm_pci_function {
     uint32_t msix_ctl;
     uint32_t msix_bar;
     uint32_t msix[PCI_MSIX_BAR_SIZE];
+
+    // Device-provided read-only capability blob (Virtio, etc)
+    // Mapped into standard config space at PCI_DEV_CAP_OFFSET
+    const uint8_t* dev_cap;
+    uint32_t       dev_cap_size;
 };
 
 typedef struct {
@@ -486,6 +501,16 @@ static uint32_t pci_func_cfg_read(rvvm_pci_func_t* func, size_t reg)
         return 0xFFFFFFFFUL;
     }
     val = pci_func_caps_base(func, reg);
+
+    // Device-provided capabilities (Virtio vendor caps, etc), read-only
+    if (func->dev_cap && reg >= PCI_DEV_CAP_OFFSET && reg < PCI_DEV_CAP_END) {
+        size_t cap_off = reg - PCI_DEV_CAP_OFFSET;
+        if (cap_off < func->dev_cap_size) {
+            return read_uint32_le_m(func->dev_cap + cap_off);
+        }
+        return 0;
+    }
+
     switch (reg) {
         case PCI_REG_DEVICE:
             return func->device_id;
@@ -581,6 +606,10 @@ static uint32_t pci_func_cfg_read(rvvm_pci_func_t* func, size_t reg)
 
         // MSI-X Capability
         case PCI_REG_MSIX:
+            if (func->dev_cap) {
+                // Chain device-provided capabilities after MSI-X
+                val |= (PCI_DEV_CAP_OFFSET << 8);
+            }
             return val | atomic_load_uint32_relax(&func->msix_ctl);
         case PCI_REG_MSIX_TBL:
             return func->msix_bar;
@@ -851,6 +880,18 @@ RVVM_PUBLIC rvvm_pci_func_t* rvvm_pci_func_init(rvvm_machine_t*             mach
         if (func->rom == NULL) {
             // Failed to attach function ROM, mark failure
             func->bus = NULL;
+        }
+    }
+
+    // Publish device-provided capabilities (Virtio vendor caps, etc)
+    // The capability blob is a read-only byte buffer owned by the device,
+    // must remain valid for the function lifetime
+    if (desc->cap && desc->cap->mmap && desc->cap->size) {
+        if (desc->cap->size <= (PCI_DEV_CAP_END - PCI_DEV_CAP_OFFSET)) {
+            func->dev_cap      = desc->cap->mmap;
+            func->dev_cap_size = desc->cap->size;
+        } else {
+            rvvm_warn("PCI device capability blob too large (%u bytes)", (uint32_t)desc->cap->size);
         }
     }
 

@@ -81,8 +81,9 @@ USE_SOUND   ?= 0          # Enable sound support
 USE_GDBSTUB ?= $(USE_NET) # Support debugging the guest via GDB remote protocol
 
 # Board features
-USE_FDT  ?= 1 # Enable Flattened Device Tree automatic generation
-USE_VFIO ?= 1 # Support PCIe VFIO pass-through on Linux hosts
+USE_FDT   ?= 1 # Enable Flattened Device Tree automatic generation
+USE_VFIO  ?= 1 # Support PCIe VFIO pass-through on Linux hosts
+USE_VIRGL ?= 0 # Enable VirtIO GPU 3D acceleration (VirGL/Venus) via libvirglrenderer
 
 # Infrastructure
 USE_INFRA_TESTS ?= 0 # Build infrastructure tests
@@ -164,6 +165,7 @@ override DEPS_USE_LIBRETRO  := USE_LIB USE_NET
 override LIBS_USE_SDL     := sdl$(filter-out 1,$(USE_SDL))
 override LIBS_USE_X11     := x11 xext
 override LIBS_USE_WAYLAND := wayland-client xkbcommon
+override LIBS_USE_VIRGL   := virglrenderer
 
 #
 # Additional headers
@@ -183,7 +185,7 @@ override lib_src_rvvm_libretro := $(SRCDIR)/bindings/libretro/libretro.c
 override lib_src_rvvm          := $(filter-out $(bin_src_rvvm) $(lib_src_rvvm_libretro),$(call recursive_match,$(SRCDIR),*.c *.cpp *.cc *.cxx))
 
 override bin_libs_rvvm := rvvm
-override lib_libs_rvvm := $(if $(call var_use,USE_LIBS_PROBE),,$(LIBS_USE_SDL) $(LIBS_USE_X11) $(LIBS_USE_WAYLAND))
+override lib_libs_rvvm := $(if $(call var_use,USE_LIBS_PROBE),,$(LIBS_USE_SDL) $(LIBS_USE_X11) $(LIBS_USE_WAYLAND) $(LIBS_USE_VIRGL))
 
 #
 # Tests
