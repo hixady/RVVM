@@ -181,6 +181,7 @@ static void rvvm_print_help(void)
         "    -cmdline    ...  Override payload kernel command line\n"
         "    -append     ...  Modify payload kernel command line\n"
         "    -res 1280x720    Set display(s) resolution\n"
+        "    -virtio_gpu      Use VirtIO GPU display (VirGL/Venus 3D if built with USE_VIRGL)\n"
         "    -poweroff_key    Send HID_KEY_POWER instead of exiting on GUI close\n"
         "    -portfwd 8080=80 Port forwarding (Extended: tcp/127.0.0.1:8080=80)\n"
         "    -vfio_pci   ...  PCI passthrough via VFIO (Example: 00:02.0), needs root\n"
@@ -352,6 +353,17 @@ static int rvvm_cli_main(int argc, char** argv)
         } else if (rvvm_has_arg("bochs_display")) {
             gui_window_t* win = gui_rvvm_init(0x1000000UL, NULL, machine);
             rvvm_bochs_display_init_auto(machine, gui_window_get_fbdev(win));
+        } else if (rvvm_has_arg("virtio_gpu")) {
+            // VirtIO GPU drives the display: allocate VRAM for the scanout and
+            // let the guest program its mode via the VirtIO GPU control queue.
+            rvvm_fb_t     hint = {
+                    .width  = 1280,
+                    .height = 720,
+                    .format = RVVM_RGB_XRGB8888,
+            };
+            gui_window_t* win       = gui_rvvm_init(1920UL * 1080 * 4, &hint, machine);
+            rvvm_fbdev_t* gpu_fbdev = gui_window_get_fbdev(win);
+            rvvm_virtio_gpu_init_auto(machine, gpu_fbdev);
         } else {
             gui_window_t* win = gui_rvvm_init(0, NULL, machine);
             rvvm_simplefb_init_auto(machine, gui_window_get_fbdev(win));

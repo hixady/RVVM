@@ -40,6 +40,7 @@ option(USE_GDBSTUB "Enable GDB server stub" ON)
 # Devices
 option(USE_FDT "Enable Flattened Device Tree generation" ON)
 option(USE_VFIO "Enable VFIO PCIe passthrough on Linux hosts" ON)
+option(USE_VIRGL "Enable VirtIO GPU 3D acceleration (VirGL/Venus)" OFF)
 
 # Deprecated features
 option(USE_TAP_LINUX "Use Linux TAP (deprecated)" OFF)
@@ -256,6 +257,15 @@ if (NOT USE_LIBS_PROBE)
 	endif()
 	set(LIBS_USE_X11 "X11" "Xext")
 	set(LIBS_USE_WAYLAND "wayland-client" "xkbcommon")
+endif()
+
+# VirtIO GPU 3D acceleration links libvirglrenderer via pkg-config
+if (USE_VIRGL)
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(VIRGL REQUIRED virglrenderer)
+	target_include_directories(rvvm_common INTERFACE ${VIRGL_INCLUDE_DIRS})
+	target_link_directories(rvvm_common INTERFACE ${VIRGL_LIBRARY_DIRS})
+	set(LIBS_USE_VIRGL ${VIRGL_LIBRARIES})
 endif()
 
 # Useflag dependencies
