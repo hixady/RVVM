@@ -54,6 +54,9 @@ typedef struct {
     /* A queue was kicked (notified) by the driver, process available buffers */
     void (*notify)(virtio_dev_t* vdev, uint16_t queue_id);
 
+    /* Periodic poll at host refresh rate (display refresh, input polling) */
+    void (*poll)(virtio_dev_t* vdev);
+
     /* Device was reset (status cleared), drop all in-flight state */
     void (*reset)(virtio_dev_t* vdev);
 

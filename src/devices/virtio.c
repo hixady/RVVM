@@ -820,6 +820,14 @@ static void virtio_bar_reset(rvvm_reg_dev_t* dev)
     }
 }
 
+static void virtio_bar_poll(rvvm_reg_dev_t* dev)
+{
+    virtio_dev_t* vdev = rvvm_region_data(dev);
+    if (vdev->cb->poll) {
+        vdev->cb->poll(vdev);
+    }
+}
+
 static void virtio_bar_cleanup(rvvm_reg_dev_t* dev)
 {
     virtio_dev_t* vdev = rvvm_region_data(dev);
@@ -834,6 +842,7 @@ static const rvvm_reg_type_t virtio_bar_type = {
     .name     = "virtio-pci",
     .read     = virtio_bar_read,
     .write    = virtio_bar_write,
+    .poll     = virtio_bar_poll,
     .reset    = virtio_bar_reset,
     .cleanup  = virtio_bar_cleanup,
     .min_size = 1,

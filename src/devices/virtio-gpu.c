@@ -215,35 +215,33 @@ static void gpu_flush_to_display(virtio_gpu_t* gpu, gpu_scanout_t* sc, gpu_resou
         return;
     }
 
-    uint32_t bpp        = 4;
+    const uint32_t bpp = 4;
+    // Nothing visible if the scanout origin is outside the resource
+    if (sc->x >= r->width || sc->y >= r->height) {
+        return;
+    }
+
     uint32_t res_stride = r->width * bpp;
-    uint32_t out_w      = sc->w;
-    uint32_t out_h      = sc->h;
-    uint32_t out_stride = out_w * bpp;
+    uint32_t out_stride = sc->w * bpp;                   // Scanout (VRAM) stride
+    uint32_t copy_w     = EVAL_MIN(sc->w, r->width - sc->x) * bpp;
+    uint32_t out_h      = EVAL_MIN(sc->h, r->height - sc->y);
 
     // Clamp to available VRAM
-    if ((size_t)out_stride * out_h > vram_size) {
+    if ((size_t)out_stride * sc->h > vram_size) {
         return;
     }
 
     for (uint32_t row = 0; row < out_h; ++row) {
-        uint32_t src_y = sc->y + row;
-        if (src_y >= r->height) {
-            break;
-        }
-        size_t src_off = (size_t)src_y * res_stride + (size_t)sc->x * bpp;
+        size_t src_off = (size_t)(sc->y + row) * res_stride + (size_t)sc->x * bpp;
         size_t dst_off = (size_t)row * out_stride;
-        size_t copy_w  = out_stride;
-        if (sc->x + out_w > r->width) {
-            copy_w = (r->width - sc->x) * bpp;
-        }
-        if (src_off + copy_w <= r->data_size) {
+        if (src_off + copy_w <= r->data_size && dst_off + copy_w <= vram_size) {
             memcpy(vram + dst_off, r->data + src_off, copy_w);
         }
     }
 
+    // Mark VRAM dirty; the actual display redraw happens on the event-loop
+    // thread via the poll callback (rvvm_fbdev_update).
     rvvm_fbdev_dirty(gpu->fbdev);
-    rvvm_fbdev_update(gpu->fbdev);
 }
 
 /*
@@ -476,16 +474,17 @@ static void gpu_cmd_transfer_to_host_2d(virtio_gpu_t* gpu, virtio_request_t* req
 
     uint32_t bpp    = 4;
     uint32_t stride = r->width * bpp;
-    for (uint32_t row = 0; row < rh; ++row) {
-        if (ry + row >= r->height) {
-            break;
-        }
+    // Clamp the destination rectangle to the resource bounds
+    if (rx >= r->width || ry >= r->height) {
+        gpu_respond(gpu, req, VIRTIO_GPU_RESP_OK_NODATA, hdr);
+        return;
+    }
+    uint32_t clamp_w = EVAL_MIN(rw, r->width - rx);
+    uint32_t clamp_h = EVAL_MIN(rh, r->height - ry);
+    for (uint32_t row = 0; row < clamp_h; ++row) {
         uint64_t src_off = offset + (uint64_t)row * stride;
         size_t   dst_off = (size_t)(ry + row) * stride + (size_t)rx * bpp;
-        size_t   copy_w  = (size_t)rw * bpp;
-        if (rx + rw > r->width) {
-            copy_w = (size_t)(r->width - rx) * bpp;
-        }
+        size_t   copy_w  = (size_t)clamp_w * bpp;
         if (dst_off + copy_w <= r->data_size) {
             gpu_backing_read(gpu, r, src_off, r->data + dst_off, copy_w);
         }
@@ -875,6 +874,13 @@ static void gpu_notify(virtio_dev_t* vdev, uint16_t queue_id)
     virtio_queue_interrupt(vdev, queue_id);
 }
 
+// Periodic refresh at host rate: redraw the scanout and poll input
+static void gpu_poll(virtio_dev_t* vdev)
+{
+    virtio_gpu_t* gpu = virtio_dev_data(vdev);
+    rvvm_fbdev_update(gpu->fbdev);
+}
+
 static void gpu_config_read(virtio_dev_t* vdev, void* data, size_t size, size_t off)
 {
     virtio_gpu_t* gpu = virtio_dev_data(vdev);
@@ -953,6 +959,7 @@ static const virtio_dev_cb_t gpu_virtio_cb = {
     .config_read  = gpu_config_read,
     .config_write = gpu_config_write,
     .notify       = gpu_notify,
+    .poll         = gpu_poll,
     .reset        = gpu_reset,
     .cleanup      = gpu_cleanup,
 };
